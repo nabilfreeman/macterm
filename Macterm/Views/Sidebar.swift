@@ -1061,7 +1061,11 @@ private struct SidebarTabRow: View {
                 .onAppear { focused = true }
         } else {
             TabRowTitle(tab: tab)
-                .onTapGesture(count: 2) { beginRename() }
+                // Keep the List's native single-click selection (including
+                // modifier-click multi-selection) alive alongside rename.
+                // A plain `onTapGesture(count: 2)` owns the title's whole tap
+                // sequence and prevents the row seeing its first click.
+                .simultaneousGesture(TapGesture(count: 2).onEnded { beginRename() })
         }
     }
 
