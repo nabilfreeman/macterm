@@ -397,6 +397,7 @@ struct SidebarContent: View {
                     tab: tab,
                     index: index + 1,
                     iconSymbolOverride: "pin",
+                    selectionItem: .tab(projectID: PinnedTabs.projectID, tabID: record.id),
                     presentation: presentation,
                     isInteractive: isInteractive,
                     onRename: { newName in
@@ -494,6 +495,7 @@ struct SidebarContent: View {
         SidebarTabRow(
             tab: tab,
             index: tabIndex + 1,
+            selectionItem: .tab(projectID: project.id, tabID: tab.id),
             presentation: presentation,
             isInteractive: isInteractive,
             // An unloaded project keeps its tabs as a layout with no shells
@@ -985,6 +987,7 @@ private struct SidebarTabRow: View {
     /// Fixed icon overriding the user's `tabIconSymbol` preference — the
     /// pinned rows pass "pin" so the icon itself marks the row's kind.
     var iconSymbolOverride: String?
+    let selectionItem: SidebarItem
     @Bindable
     var presentation: SidebarPresentationState
     let isInteractive: Bool
@@ -1019,10 +1022,11 @@ private struct SidebarTabRow: View {
                 .onAppear { focused = true }
         } else {
             TabRowTitle(tab: tab)
-                // Keep the List's native single-click selection (including
-                // modifier-click multi-selection) alive alongside rename.
-                // A plain `onTapGesture(count: 2)` owns the title's whole tap
-                // sequence and prevents the row seeing its first click.
+                // A title-level double-click gesture owns the tap sequence,
+                // so the List row never sees clicks landing on the text. Give
+                // the title the same selection path explicitly, while keeping
+                // rename simultaneous so the first click selects immediately.
+                .onTapGesture { select() }
                 .simultaneousGesture(TapGesture(count: 2).onEnded { beginRename() })
         }
     }
@@ -1101,6 +1105,22 @@ private struct SidebarTabRow: View {
             originalCustomTitle: tab.customTitle
         )
         appState.renamingTabID = nil
+    }
+
+    private func select() {
+        guard isInteractive else { return }
+        let modifiers = NSEvent.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if modifiers.contains(.command) {
+            if presentation.selection.contains(selectionItem) {
+                presentation.selection.remove(selectionItem)
+            } else {
+                presentation.selection.insert(selectionItem)
+            }
+        } else if modifiers.contains(.shift) {
+            presentation.selection.insert(selectionItem)
+        } else {
+            presentation.selection = [selectionItem]
+        }
     }
 
     private func commit() {
