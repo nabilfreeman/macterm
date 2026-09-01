@@ -592,11 +592,11 @@ private struct GeneralSettings: View {
             }
 
             Section("Session Persistence") {
-                Toggle("Restore every project on launch", isOn: $restoreAllProjectsOnLaunch)
+                Toggle("Restore and expand every project on launch", isOn: $restoreAllProjectsOnLaunch)
                     .onChange(of: restoreAllProjectsOnLaunch) { _, v in
                         Preferences.shared.restoreAllProjectsOnLaunch = v
                     }
-                Text("Reattaches saved terminals immediately instead of waiting until each project is selected.")
+                Text("Reattaches saved terminals immediately and reveals their tabs in the sidebar.")
                     .settingsCaption()
 
                 // Persistence can fail silently when zmx is unavailable
