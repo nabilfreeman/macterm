@@ -1591,6 +1591,46 @@ struct AppStateTests {
         #expect(state.activeProjectID == nil)
     }
 
+    @Test
+    func warmRestoredProjects_warms_local_background_projects() {
+        let state = makeAppState()
+        let activeProject = Project(name: "active", path: "/tmp/active", sortOrder: 0)
+        let backgroundProject = Project(name: "background", path: "/tmp/background", sortOrder: 1)
+
+        let activePane = Pane(projectPath: activeProject.path, projectID: activeProject.id)
+        let activeTab = TerminalTab(
+            id: UUID(),
+            splitRoot: .pane(activePane),
+            focusedPaneID: activePane.id
+        )
+        state.workspaces[activeProject.id] = Workspace(
+            projectID: activeProject.id,
+            tabs: [activeTab],
+            activeTabID: activeTab.id
+        )
+
+        let backgroundPane = Pane(projectPath: backgroundProject.path, projectID: backgroundProject.id)
+        let backgroundTab = TerminalTab(
+            id: UUID(),
+            splitRoot: .pane(backgroundPane),
+            focusedPaneID: backgroundPane.id
+        )
+        state.workspaces[backgroundProject.id] = Workspace(
+            projectID: backgroundProject.id,
+            tabs: [backgroundTab],
+            activeTabID: backgroundTab.id
+        )
+        state.activeProjectID = activeProject.id
+
+        var warmed: [UUID] = []
+        state.warmPane = { warmed.append($0.id) }
+
+        state.warmRestoredProjects([activeProject, backgroundProject])
+
+        #expect(warmed == [backgroundPane.id])
+        #expect(backgroundPane.remoteZmxPath == nil)
+    }
+
     // MARK: - Quiet-settle
 
     // The poll calls `pane.settleTerminalActivityIfQuiet()` directly (no
