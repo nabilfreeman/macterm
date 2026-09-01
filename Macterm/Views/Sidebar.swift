@@ -1023,6 +1023,7 @@ private struct SidebarTabRow: View {
                 .onAppear { focused = true }
         } else {
             TabRowTitle(tab: tab)
+                .onTapGesture(count: 2) { beginRename() }
         }
     }
 
