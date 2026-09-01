@@ -764,7 +764,14 @@ final class AppState {
             activeProjectID: activeProjectID
         )
         logger.info("warmRestoredProjects: starting \(panes.count, privacy: .public) background pane(s)")
-        warmStaggered(panes)
+        let visibleRemoteDestinations = Self.visibleRemoteDestinations(
+            activeProjectID: activeProjectID,
+            workspaces: workspaces
+        )
+        warmScheduled(Self.launchWarmSchedule(
+            panes,
+            alreadyStartingRemoteDestinations: visibleRemoteDestinations
+        ))
     }
 
     /// Start panes' shells off-screen, staggered 125ms apart: each warm is a
@@ -776,18 +783,79 @@ final class AppState {
     /// no-ops. `afterEach` runs right after a pane's warm (the pinned
     /// workspace wires its process-exit callback there).
     func warmStaggered(_ panes: [Pane], afterEach: @escaping (Pane) -> Void = { _ in }) {
-        for (index, pane) in panes.enumerated() {
-            if index == 0 {
-                warmPane(pane)
-                afterEach(pane)
+        warmScheduled(panes.enumerated().map { index, pane in
+            LaunchWarmStep(pane: pane, delay: 0.125 * Double(index))
+        }, afterEach: afterEach)
+    }
+
+    private func warmScheduled(
+        _ steps: [LaunchWarmStep],
+        afterEach: @escaping (Pane) -> Void = { _ in }
+    ) {
+        for step in steps {
+            if step.delay == 0 {
+                warmPane(step.pane)
+                afterEach(step.pane)
                 continue
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.125 * Double(index)) { [weak self, weak pane] in
+            DispatchQueue.main.asyncAfter(deadline: .now() + step.delay) { [weak self, weak pane = step.pane] in
                 guard let self, let pane else { return }
                 self.warmPane(pane)
                 afterEach(pane)
             }
         }
+    }
+
+    struct LaunchWarmStep {
+        let pane: Pane
+        let delay: TimeInterval
+    }
+
+    /// Build the eager-launch schedule without making local restoration pay
+    /// for remote connection setup. Local panes retain the ordinary 125ms
+    /// stagger. Remote panes going to the same ssh destination get one-second
+    /// slots so the first connection can establish the user's ControlMaster
+    /// before the rest try to multiplex through it. The visible tab is already
+    /// rendering outside the incubator, so its destination occupies the first
+    /// slot even though none of its panes appear in `panes`.
+    static func launchWarmSchedule(
+        _ panes: [Pane],
+        alreadyStartingRemoteDestinations: Set<String> = []
+    ) -> [LaunchWarmStep] {
+        var lastRemoteDelay = Dictionary(uniqueKeysWithValues:
+            alreadyStartingRemoteDestinations.map { ($0, 0.0) }
+        )
+
+        return panes.enumerated().map { index, pane in
+            let ordinaryDelay = 0.125 * Double(index)
+            guard let destination = remoteDestination(for: pane) else {
+                return LaunchWarmStep(pane: pane, delay: ordinaryDelay)
+            }
+
+            let delay: TimeInterval = if let previous = lastRemoteDelay[destination] {
+                max(ordinaryDelay, previous + 1.0)
+            } else {
+                ordinaryDelay
+            }
+            lastRemoteDelay[destination] = delay
+            return LaunchWarmStep(pane: pane, delay: delay)
+        }
+    }
+
+    private static func visibleRemoteDestinations(
+        activeProjectID: UUID?,
+        workspaces: [UUID: Workspace]
+    ) -> Set<String> {
+        guard let activeProjectID,
+              let workspace = workspaces[activeProjectID],
+              let activeTab = workspace.tabs.first(where: { $0.id == workspace.activeTabID })
+        else { return [] }
+        return Set(activeTab.splitRoot.allPanes().compactMap(remoteDestination(for:)))
+    }
+
+    private static func remoteDestination(for pane: Pane) -> String? {
+        guard case let .remote(user, host, _)? = pane.remoteSpec else { return nil }
+        return RemoteSpawn.destination(user: user, host: host)
     }
 
     /// Panes whose shells should be eagerly started: every pane in every tab
