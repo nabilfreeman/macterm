@@ -657,8 +657,12 @@ final class AppState {
                 // Reattaching remote panes need the zmx path before warm/render.
                 stampRemoteZmxPath(project)
                 acknowledgeActiveTab(projectID: id)
-                warmFocusedProject()
             }
+        }
+        if Preferences.shared.restoreAllProjectsOnLaunch {
+            warmRestoredProjects(projects)
+        } else {
+            warmFocusedProject()
         }
         // Sweep crash/force-quit orphans: kill zero-client macterm-* sessions
         // no restored pane claims. Attach-aware and fail-closed (a failed
@@ -743,6 +747,26 @@ final class AppState {
         warmStaggered(Self.panesToWarm(in: ws))
     }
 
+    /// Start every restored ordinary project's shells without changing the
+    /// selected project. Background projects need every pane warmed; the
+    /// selected project's active tab is already rendered by SwiftUI, so only
+    /// its other tabs go through the incubator. All panes share one staggered
+    /// batch to avoid multiplying login/SSH pressure at launch.
+    func warmRestoredProjects(_ projects: [Project]) {
+        for project in projects where workspaces[project.id] != nil {
+            // Background remote panes never pass through selectProject, so
+            // stamp their configured zmx path before their surfaces spawn.
+            stampRemoteZmxPath(project)
+        }
+        let panes = Self.panesToWarmAtLaunch(
+            projectIDs: projects.map(\.id),
+            workspaces: workspaces,
+            activeProjectID: activeProjectID
+        )
+        logger.info("warmRestoredProjects: starting \(panes.count, privacy: .public) background pane(s)")
+        warmStaggered(panes)
+    }
+
     /// Start panes' shells off-screen, staggered 125ms apart: each warm is a
     /// login shell (PAM, rc files) and — when restoring — a `zmx attach`
     /// reattaching a daemon, and firing them all in one tick multiplies
@@ -773,6 +797,24 @@ final class AppState {
         workspace.tabs
             .filter { $0.id != workspace.activeTabID }
             .flatMap { $0.splitRoot.allPanes() }
+    }
+
+    /// Panes to start when eager launch restoration is enabled. Project order
+    /// is supplied explicitly so the stagger is deterministic and follows the
+    /// sidebar. A restored project that is not selected is entirely off-screen
+    /// and therefore needs all of its panes warmed.
+    static func panesToWarmAtLaunch(
+        projectIDs: [UUID],
+        workspaces: [UUID: Workspace],
+        activeProjectID: UUID?
+    ) -> [Pane] {
+        projectIDs.flatMap { projectID -> [Pane] in
+            guard let workspace = workspaces[projectID] else { return [] }
+            if projectID == activeProjectID {
+                return panesToWarm(in: workspace)
+            }
+            return workspace.tabs.flatMap { $0.splitRoot.allPanes() }
+        }
     }
 
     // MARK: - Remote reconnect (#281)
