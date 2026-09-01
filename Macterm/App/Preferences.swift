@@ -655,7 +655,7 @@ final class Preferences {
     /// Start every restored project's terminal surfaces at launch instead of
     /// waiting for each project to be selected. Off by default: eager restore
     /// can open many shells or remote SSH connections at once. Launch warming
-    /// remains staggered by `AppState.warmStaggered` in either mode.
+    /// stays staggered, with same-host remote panes paced more conservatively.
     var restoreAllProjectsOnLaunch: Bool {
         didSet { defaults.set(restoreAllProjectsOnLaunch, forKey: Keys.restoreAllProjectsOnLaunch) }
     }

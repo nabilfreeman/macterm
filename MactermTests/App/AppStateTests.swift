@@ -1564,6 +1564,44 @@ struct AppStateTests {
     }
 
     @Test
+    func launchWarmSchedule_paces_each_remote_destination_without_slowing_local_panes() {
+        let projectID = UUID()
+        let localOne = Pane(projectPath: "/local", projectID: projectID)
+        let remoteOne = Pane(projectPath: "example:~/one", projectID: projectID)
+        let otherRemoteOne = Pane(projectPath: "other:~/one", projectID: projectID)
+        let remoteTwo = Pane(projectPath: "example:~/two", projectID: projectID)
+        let localTwo = Pane(projectPath: "/local", projectID: projectID)
+        let otherRemoteTwo = Pane(projectPath: "other:~/two", projectID: projectID)
+
+        let schedule = AppState.launchWarmSchedule(
+            [localOne, remoteOne, otherRemoteOne, remoteTwo, localTwo, otherRemoteTwo],
+            // The visible tab is already starting a connection to example.
+            alreadyStartingRemoteDestinations: ["example"]
+        )
+
+        #expect(schedule.map(\.pane.id) == [
+            localOne.id,
+            remoteOne.id,
+            otherRemoteOne.id,
+            remoteTwo.id,
+            localTwo.id,
+            otherRemoteTwo.id,
+        ])
+        #expect(schedule.map(\.delay) == [0, 1, 0.25, 2, 0.5, 1.25])
+    }
+
+    @Test
+    func launchWarmSchedule_starts_the_first_background_remote_destination_immediately() {
+        let projectID = UUID()
+        let first = Pane(projectPath: "example:~/one", projectID: projectID)
+        let second = Pane(projectPath: "example:~/two", projectID: projectID)
+
+        let schedule = AppState.launchWarmSchedule([first, second])
+
+        #expect(schedule.map(\.delay) == [0, 1])
+    }
+
+    @Test
     func warmRestoredProjects_stamps_remote_zmx_path_before_warming() {
         let state = makeAppState()
         let project = Project(
