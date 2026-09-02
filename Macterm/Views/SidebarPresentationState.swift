@@ -36,6 +36,10 @@ final class SidebarPresentationState {
         renameTarget = target
         renameText = text
         self.originalCustomTitle = originalCustomTitle
+        // A rename opened by double-clicking an inactive row also switches to
+        // it, and the pane that becomes focused asks for first responder on a
+        // retry loop that can outlive this gesture. See the flag's own notes.
+        FocusRestoration.isEditingInlineName = true
     }
 
     func isRenaming(_ target: SidebarRenameTarget) -> Bool {
@@ -66,5 +70,6 @@ final class SidebarPresentationState {
         renameTarget = nil
         renameText = ""
         originalCustomTitle = nil
+        FocusRestoration.isEditingInlineName = false
     }
 }
